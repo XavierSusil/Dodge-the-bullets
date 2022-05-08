@@ -19,6 +19,10 @@ vector<int> rockPos;
 vector<int> bulletPos;
 vector<int> shipFrontView;
 
+//scoring 
+int currentScore = -1;
+int maximumScore = -1;
+
 void underTest();
 
 // initialize the screens nd put the borders
@@ -98,6 +102,7 @@ void rockDrops(int objects) {
 			rockPos.erase(x);
 			x = rockPos.begin();
 			objCount--;
+			currentScore++; // score increased by one as that rock has been dodged
 		}
 		else {
 			gameScreen[*x] = ' ';
@@ -292,11 +297,32 @@ bool shipRockCollision(int currentPositionOfShip) {
 
 wchar_t* menuScreen = new wchar_t[width * height];
 
+void printInteger(int startingIndex, wchar_t screen[],int num) {
+
+	int length = 0;
+	int temp = num;
+	if (!temp) length++;
+	while (temp) {
+		length++;
+		temp /= 10;
+	}
+	temp = num;
+	length++;
+	if (!temp) screen[startingIndex + 1] = '0';
+	while (temp) {
+		int rem = temp % 10;
+		temp /= 10;
+		screen[startingIndex + length] = char(rem + 48);
+		length--;
+	}
+}
 void initMenuScreen() {
 
 	initScreen(menuScreen);
-	char gameName[] = "CHICKEN INVADERS UNICODE VERSION!!";
-	char playerName[] = "NAME  :";
+	char gameName[] = "DODGE THE BULLETS UNICODE VERSION!!";
+	char playerName[] =       "NAME        :";
+	char scoreDisplay[] =     "SCORE       :";
+	char highScoreDisplay[] = "HIGH SCORE  :";
 	int reference = 8 * width + width / 5 + 18;
 	int i = 0;
 	while (gameName[i] != '\0') {
@@ -307,6 +333,21 @@ void initMenuScreen() {
 	while (playerName[i] != '\0') {
 		menuScreen[reference + 2 * width + i + 5] = playerName[i];
 		i++;
+	}
+
+	i = 0;
+	if (currentScore != -1) {
+		while (scoreDisplay[i] != '\0') {
+			menuScreen[reference + 4 * width + i + 5] = scoreDisplay[i];
+			i++;
+		}
+		printInteger(reference + 4 * width + i + 6, menuScreen, currentScore);
+		i = 0;
+		while (highScoreDisplay[i] != '\0') {
+			menuScreen[reference + 6 * width + i + 5] = highScoreDisplay[i];
+			i++;
+		}
+		printInteger(reference + 6 * width + i + 6, menuScreen, maximumScore);
 	}
 	menuScreen[width * height - 1] = '\0';
 }
@@ -324,10 +365,10 @@ void pressCharacter(char ch, int& index, int reference) {
 // index --> from where to start write (Ralative position )
 void userInput(int& index) {
 	// reference is  based on the reference from initMenuScreen fn
-	// and the constant '13' in the second line is based on the length of the string "Name  :"
+	// and the constant '19' in the second line is based on the length of the string "Name       :"
 	// the constant should be changed if the length of the string is altered 
 	int reference = 8 * width + width / 5 + 18;
-	reference += 2 * width + 13;
+	reference += 2 * width + 19;
 	for (int i = 'A'; i <= 'Z'; i++) {
 		pressCharacter((char)i, index, reference);
 	}
@@ -335,6 +376,25 @@ void userInput(int& index) {
 	return;
 }
 
+
+// mention scoring in the bottom right corner of the game screen
+
+void printScore() {
+	char score[] = "SCORE : ";
+	int i = 0;
+	while (score[i] != '\0') {
+		gameScreen[width * height - 20 + i] = score[i];
+		i++;
+	}
+
+	int j = i;
+	while (width * height - 20 + i < width * height - 1) {
+		gameScreen[width * height - 20 + i] = ' '; i++;
+	}
+	
+	printInteger(width * height - 20 + j, gameScreen, currentScore);
+	
+}
 bool runGameScreen(HANDLE& hGameScreen,
 	DWORD& dwBytesWrittenGame,
 	int& slowBullets,
@@ -345,13 +405,14 @@ bool runGameScreen(HANDLE& hGameScreen,
 		shootBullets(currentPositionOfShip);
 		slowBullets = 0;
 	}slowBullets++;
-	if (slowRocks == 50) {
-		rockDrops(5);
+	if (slowRocks == 30) {
+		rockDrops(10);
 		slowRocks = 0;
 	}slowRocks++;
 	moveSpaceShip(currentPositionOfShip);
 	pauseAndPlay();
 	//	bulletRockCollision();
+	printScore();
 	WriteConsoleOutputCharacter(hGameScreen, gameScreen, width * height, { 0,0 }, &dwBytesWrittenGame);
 	uDelay(45);
 	if (shipRockCollision(currentPositionOfShip)) return false;
@@ -387,6 +448,8 @@ void getExcess() {
 	}
 }
 
+
+
 // main function
 int main() {
 	HANDLE hMenuScreen = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
@@ -405,8 +468,10 @@ int main() {
 	int slowrocks = 0;
 	int currentPostionOfShip;
 	int screenNumber = 0;
-	bool runGetExcessOnce = true;/* 0->initMenuScreen, 1->initGameScreen
-						   2 -> runMenuScreen, 3 -> runGameScreen*/
+	
+	                      
+	/* 0->initMenuScreen, 1->initGameScreen
+     2 -> runMenuScreen, 3 -> runGameScreen*/
 	while (true) {
 		switch (screenNumber) {
 		case 0:
@@ -424,21 +489,18 @@ int main() {
 			printShip(currentPostionOfShip);
 			screenNumber = 3; break;
 		case 2:
-			//After the ship collided with rock get the excess amount WASD pressed
-			if (runGetExcessOnce) {
-				getExcess();
-				runGetExcessOnce = false;
-			}
-			if (!runMenuScreen(hMenuScreen, dwBytesWrittenMenu, menuCursor)) {
-				screenNumber = 1;
-				runGetExcessOnce = true;
-			}
+			getExcess();
+			while (runMenuScreen(hMenuScreen, dwBytesWrittenMenu, menuCursor));
+			screenNumber = 1;
+				
 			break;
 		case 3:
+			currentScore = 0;
+			// score will be mentioned  in the bottom right corner
 
-			if (!runGameScreen(hGameScreen, dwBytesWrittenGame, slowBullets, slowrocks, currentPostionOfShip)) {
-				screenNumber = 0;
-			}
+			while (runGameScreen(hGameScreen, dwBytesWrittenGame, slowBullets, slowrocks, currentPostionOfShip));
+			screenNumber = 0;
+			maximumScore = (maximumScore > currentScore) ? maximumScore : currentScore;
 			break;
 		}
 
