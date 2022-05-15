@@ -4,8 +4,13 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <string>
+#include <fstream>
+#include <thread>
 
 #include <Windows.h>
+
+#define test 0
 
 using std::vector;
 using std::map;
@@ -15,13 +20,40 @@ int width = 120;
 int height = 40;
 wchar_t* gameScreen = new wchar_t[width * height];
 int objCount = 0;
-vector<int> rockPos;
-vector<int> bulletPos;
-vector<int> shipFrontView;
+static vector<int> rockPos;
+static vector<int> bulletPos;
+static vector<int> shipFrontView;
 
 //scoring 
 int currentScore = -1;
 int maximumScore = -1;
+std::string currentPlayer;
+
+map<std::string, int> playerScores;
+
+// reads  the  values  stored in FILE into  playerScores 
+void  readPlayerScores() {
+
+	std::ifstream fin("ScoreBoard.txt", std::ios_base::in);
+	if (fin.is_open()) {
+		std::string s;
+		int n = 0; 
+		while (fin >> s) {
+			fin >> n;
+			playerScores[s] = n;
+		}
+	}
+	fin.close();
+}
+
+//  after  finishing the game  write  all the players and their scores from playerScores to FILE
+void  writePlayerScores() {
+	std::ofstream fout("ScoreBoard.txt", std::ios_base::out);
+
+	for (auto& [x, y] : playerScores) {
+		fout << x << " " << y << "\n";
+	}
+}
 
 void underTest();
 
@@ -347,7 +379,7 @@ void initMenuScreen() {
 			menuScreen[reference + 6 * width + i + 5] = highScoreDisplay[i];
 			i++;
 		}
-		printInteger(reference + 6 * width + i + 6, menuScreen, maximumScore);
+		printInteger(reference + 6 * width + i + 5, menuScreen, maximumScore);
 	}
 	menuScreen[width * height - 1] = '\0';
 }
@@ -359,6 +391,7 @@ void pressCharacter(char ch, int& index, int reference) {
 	if (GetAsyncKeyState((unsigned short)ch)) {
 		while (GetAsyncKeyState((unsigned short)ch));
 		menuScreen[reference + index] = ch;
+		currentPlayer += ch;
 		index++;
 	}
 }
@@ -372,7 +405,13 @@ void userInput(int& index) {
 	for (int i = 'A'; i <= 'Z'; i++) {
 		pressCharacter((char)i, index, reference);
 	}
-
+	// detecting any back spaces pressed or not
+	if (GetAsyncKeyState(VK_BACK)) {
+		while (GetAsyncKeyState(VK_BACK));
+		if (currentPlayer.size()) currentPlayer.erase(currentPlayer.size() - 1);
+		if (index > 0) index--;
+		menuScreen[reference + index] = ' ';
+	}
 	return;
 }
 
@@ -449,9 +488,22 @@ void getExcess() {
 }
 
 
+static bool escPressed = false;
 
+//this  function runs parallely   used for  finishing  game loop
+void checkEsc() {
+	while (!GetAsyncKeyState(VK_ESCAPE));
+	while (GetAsyncKeyState(VK_ESCAPE));
+	escPressed = true;
+}
 // main function
 int main() {
+
+#if test
+	underTest();
+	return 0;
+#endif // test
+
 	HANDLE hMenuScreen = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 	HANDLE hGameScreen = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
 
@@ -468,11 +520,15 @@ int main() {
 	int slowrocks = 0;
 	int currentPostionOfShip;
 	int screenNumber = 0;
+
+	readPlayerScores();
+
+	std::thread checkEscKeyPress(checkEsc);
 	
 	                      
 	/* 0->initMenuScreen, 1->initGameScreen
      2 -> runMenuScreen, 3 -> runGameScreen*/
-	while (true) {
+	while (!escPressed) {
 		switch (screenNumber) {
 		case 0:
 			SetConsoleActiveScreenBuffer(hMenuScreen);
@@ -490,7 +546,8 @@ int main() {
 			screenNumber = 3; break;
 		case 2:
 			getExcess();
-			while (runMenuScreen(hMenuScreen, dwBytesWrittenMenu, menuCursor));
+			currentPlayer = "";
+			while (!escPressed and runMenuScreen(hMenuScreen, dwBytesWrittenMenu, menuCursor));
 			screenNumber = 1;
 				
 			break;
@@ -498,20 +555,35 @@ int main() {
 			currentScore = 0;
 			// score will be mentioned  in the bottom right corner
 
-			while (runGameScreen(hGameScreen, dwBytesWrittenGame, slowBullets, slowrocks, currentPostionOfShip));
+			while (!escPressed and runGameScreen(hGameScreen, dwBytesWrittenGame, slowBullets, slowrocks, currentPostionOfShip));
 			screenNumber = 0;
 			maximumScore = (maximumScore > currentScore) ? maximumScore : currentScore;
+			
+			if (playerScores.find("maximumScore") != playerScores.end()) {
+				maximumScore = (maximumScore > playerScores["maximumScore"]) ? maximumScore : playerScores["maximumScore"];
+			}
+			else {
+				playerScores["maximumScore"] = maximumScore;
+			}
+			if (playerScores.find(currentPlayer) != playerScores.end()) {
+				playerScores[currentPlayer] = (playerScores[currentPlayer] > currentScore) ? playerScores[currentPlayer] : currentScore;
+			}
+			else {
+				playerScores[currentPlayer] = currentScore;
+			}
 			break;
 		}
 
 	}
 
+	checkEscKeyPress.join();
+
+	writePlayerScores();
+
 	delete[] gameScreen;
 	delete[] menuScreen;
 	return 0;
 }
-
-// ----------------------just for fun
 
 void underTest() {
 
