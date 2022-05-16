@@ -223,13 +223,20 @@ void clearShip(int x) {
 void shootBullets(const int& currentPosition) {
 
 	if (GetAsyncKeyState(VK_LBUTTON)) {
-		gameScreen[currentPosition - 4 - width] = 0x25CF;
-		bulletPos.push_back(currentPosition - 4 - width);
+		while (GetAsyncKeyState(VK_LBUTTON));
+		int reference = currentPosition  - 2 * width + 1;
+		if ( reference <= 2 * width - 3) return;
+		gameScreen[reference] = 0x25CF;
+		bulletPos.push_back(reference);
 	}
 	if (GetAsyncKeyState(VK_RBUTTON)) {
-		gameScreen[currentPosition + 7 - width] = 0x25CF;
-		bulletPos.push_back(currentPosition + 7 - width);
+		while (GetAsyncKeyState(VK_RBUTTON));
+		int reference = currentPosition - 2 * width + 2;
+		if (reference <= 2 * width - 3) return;
+		gameScreen[reference] = 0x25CF;
+		bulletPos.push_back(reference);
 	}
+	
 	for (auto x = bulletPos.begin(); x != bulletPos.end(); x++) {
 		if ((*x) >= width + 2 && (*x) <= 2 * width - 3) {
 			gameScreen[*x] = ' ';
@@ -250,9 +257,10 @@ void shootBullets(const int& currentPosition) {
 
 
 }
-
-// tempararily done  
-// Returns  whether the ship has been moved or not 
+ 
+// Returns  whether the ship has been moved or not
+// also  moves  the ship  from old position to new position if possible
+// used in moveSpaceShip
 bool spaceShip(int shipPosition, int oldPosition) {
 	int h;
 	h = shipPosition / width;
@@ -289,20 +297,19 @@ void moveSpaceShip(int& currentPositionOfShip) {
 
 
 // collision
-// under construction
 void bulletRockCollision() {
 
-	for (auto x = bulletPos.begin(); x != bulletPos.end(); x++) {
-
-		auto y = std::find(rockPos.begin(), rockPos.end(), *x);
-		if (y != rockPos.end()) {
-			bulletPos.erase(y);
-			rockPos.erase(y);
-			x = bulletPos.begin();
-			objCount--;
-			gameScreen[*x] = ' ';
+	for (int i = 0; i < bulletPos.size(); i++) {
+		for (int j = 0; j < rockPos.size(); j++) {
+			if (bulletPos[i] == rockPos[j]) {
+				objCount--;
+				gameScreen[bulletPos[i]] = ' ';
+				bulletPos.erase(bulletPos.begin() + i);
+				rockPos.erase(rockPos.begin() + j);
+				currentScore += 5;
+				return;
+			}
 		}
-
 	}
 }
 
@@ -322,30 +329,32 @@ bool shipRockCollision(int currentPositionOfShip) {
 }
 
 
-
-
-
 //     ---------MENU  ----------------------SCREEN------------------
 
 wchar_t* menuScreen = new wchar_t[width * height];
 
 void printInteger(int startingIndex, wchar_t screen[],int num) {
 
-	int length = 0;
 	int temp = num;
-	if (!temp) length++;
-	while (temp) {
-		length++;
-		temp /= 10;
-	}
-	temp = num;
-	length++;
+	int length = 0;
 	if (!temp) screen[startingIndex + 1] = '0';
+	int i = 1;
+	temp = 0;
+	while (num) {
+		temp *= 10;
+		temp += num % 10;
+		num /= 10;
+		length++;
+	}
 	while (temp) {
 		int rem = temp % 10;
 		temp /= 10;
-		screen[startingIndex + length] = char(rem + 48);
-		length--;
+		screen[startingIndex + i] = char(rem + 48);
+		i++;
+	}
+	while (i <= length) {
+		screen[startingIndex + i] = char(48);
+		i++;
 	}
 }
 void initMenuScreen() {
@@ -379,7 +388,7 @@ void initMenuScreen() {
 			menuScreen[reference + 6 * width + i + 5] = highScoreDisplay[i];
 			i++;
 		}
-		printInteger(reference + 6 * width + i + 5, menuScreen, maximumScore);
+		printInteger(reference + 6 * width + i + 6, menuScreen, maximumScore);
 	}
 	menuScreen[width * height - 1] = '\0';
 }
@@ -440,17 +449,17 @@ bool runGameScreen(HANDLE& hGameScreen,
 	int& slowRocks,
 	int& currentPositionOfShip
 ) {
-	if (slowBullets == 25) {
+	if (slowBullets == 12) {
 		shootBullets(currentPositionOfShip);
 		slowBullets = 0;
 	}slowBullets++;
 	if (slowRocks == 30) {
-		rockDrops(10);
+		rockDrops(12);
 		slowRocks = 0;
 	}slowRocks++;
 	moveSpaceShip(currentPositionOfShip);
 	pauseAndPlay();
-	//	bulletRockCollision();
+	bulletRockCollision();
 	printScore();
 	WriteConsoleOutputCharacter(hGameScreen, gameScreen, width * height, { 0,0 }, &dwBytesWrittenGame);
 	uDelay(45);
@@ -463,6 +472,8 @@ bool runMenuScreen(HANDLE& hMenuScreen, DWORD& dwBytesWrittenMenu, int& menuCurs
 	userInput(menuCursor);
 	if (GetAsyncKeyState(VK_RETURN)) {
 		while (GetAsyncKeyState(VK_RETURN));
+		//if  player name is  not  entered  do not leave the menu screen
+		if (!currentPlayer.size()) return true;
 		return false;
 	}
 	if (menuCursor == 30) {
@@ -561,6 +572,7 @@ int main() {
 			
 			if (playerScores.find("maximumScore") != playerScores.end()) {
 				maximumScore = (maximumScore > playerScores["maximumScore"]) ? maximumScore : playerScores["maximumScore"];
+				playerScores["maximumScore"] = maximumScore;
 			}
 			else {
 				playerScores["maximumScore"] = maximumScore;
