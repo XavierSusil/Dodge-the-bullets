@@ -142,9 +142,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dodge_bullets.cpp" />
+    <ClCompile Include="EndLessMode.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="ScoreBoard.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="EndLessMode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

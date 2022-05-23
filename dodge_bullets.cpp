@@ -7,10 +7,13 @@
 #include <string>
 #include <fstream>
 #include <thread>
+#include <chrono>
 
 #include <Windows.h>
 
-#define test 0
+#include "EndLessMode.h"
+
+#define test false
 
 using std::vector;
 using std::map;
@@ -22,14 +25,40 @@ wchar_t* gameScreen = new wchar_t[width * height];
 int objCount = 0;
 static vector<int> rockPos;
 static vector<int> bulletPos;
-static vector<int> shipFrontView;
 
 //scoring 
 int currentScore = -1;
 int maximumScore = -1;
 std::string currentPlayer;
-
 map<std::string, int> playerScores;
+
+
+static bool escPressed{ false };
+static bool currentGame{ true };
+// FOR  ENDLESS MODE 
+static EndLessMode endless;
+
+void updateEndlessValues() {
+	using namespace std::chrono;
+	high_resolution_clock::time_point t1 = high_resolution_clock::now();
+	high_resolution_clock::time_point t2;
+	seconds s{ 0 };
+	while (!escPressed and currentGame) {
+		std::this_thread::sleep_for(50ms);
+		t2 = high_resolution_clock::now();
+		s = duration_cast<seconds> (t2 - t1);
+		if (s >= 5s) {
+			endless.decbulletSpeed();
+			endless.decRockSpeed();
+			endless.incMultiplier();
+			endless.incObjCount();
+
+			t1 = high_resolution_clock::now();
+		}
+		
+	}
+
+}
 
 // reads  the  values  stored in FILE into  playerScores 
 void  readPlayerScores() {
@@ -110,14 +139,9 @@ void pauseAndPlay() {
 	return;
 }
 
-void initShipFrontView() {
-	vector<int> temp{ 0,3,-4,7,1 - width,2 - width,-1 + width,-2 + width,-3 + width,4 + width,5 + width,6 + width };
-	shipFrontView = vector(temp.begin(), temp.end());
-}
-
-
 
 // Drops  simulation
+// objects  denote the maximum number of rocks at that time is allowed to allowed
 void rockDrops(int objects) {
 	int temp = 0;
 	if (objCount < 0) objCount = 0;
@@ -134,7 +158,8 @@ void rockDrops(int objects) {
 			rockPos.erase(x);
 			x = rockPos.begin();
 			objCount--;
-			currentScore++; // score increased by one as that rock has been dodged
+			currentScore += endless.getScoreMultiplier(); // score increased by one times score multiplier
+			//as that rock has been dodged
 		}
 		else {
 			gameScreen[*x] = ' ';
@@ -147,6 +172,43 @@ void rockDrops(int objects) {
 
 
 // ----------------SPACE----------- SHIP-------------------------
+void shootBullets(const int& currentPosition) {
+
+	if (GetAsyncKeyState(VK_LBUTTON)) {
+		while (GetAsyncKeyState(VK_LBUTTON));
+		int reference = currentPosition - 2 * width + 1;
+		if (reference <= 2 * width - 3) return;
+		gameScreen[reference] = 0x25CF;
+		bulletPos.push_back(reference);
+	}
+	if (GetAsyncKeyState(VK_RBUTTON)) {
+		while (GetAsyncKeyState(VK_RBUTTON));
+		int reference = currentPosition - 2 * width + 2;
+		if (reference <= 2 * width - 3) return;
+		gameScreen[reference] = 0x25CF;
+		bulletPos.push_back(reference);
+	}
+
+	for (auto x = bulletPos.begin(); x != bulletPos.end(); x++) {
+		if ((*x) >= width + 2 && (*x) <= 2 * width - 3) {
+			gameScreen[*x] = ' ';
+			if (bulletPos.size() == 1) {
+				bulletPos.clear();
+				break;
+			}
+			bulletPos.erase(x);
+			x = bulletPos.begin();
+		}
+		else
+		{
+			gameScreen[*x] = ' ';
+			*x -= width;
+			gameScreen[*x] = 0x25CF;
+		}
+	}
+
+
+}
 
 //A utility function for spaceShip()
 void printShip(int x) {
@@ -220,44 +282,6 @@ void clearShip(int x) {
 	gameScreen[x + 2 * width + 6] = ' ';
 }
 
-void shootBullets(const int& currentPosition) {
-
-	if (GetAsyncKeyState(VK_LBUTTON)) {
-		while (GetAsyncKeyState(VK_LBUTTON));
-		int reference = currentPosition  - 2 * width + 1;
-		if ( reference <= 2 * width - 3) return;
-		gameScreen[reference] = 0x25CF;
-		bulletPos.push_back(reference);
-	}
-	if (GetAsyncKeyState(VK_RBUTTON)) {
-		while (GetAsyncKeyState(VK_RBUTTON));
-		int reference = currentPosition - 2 * width + 2;
-		if (reference <= 2 * width - 3) return;
-		gameScreen[reference] = 0x25CF;
-		bulletPos.push_back(reference);
-	}
-	
-	for (auto x = bulletPos.begin(); x != bulletPos.end(); x++) {
-		if ((*x) >= width + 2 && (*x) <= 2 * width - 3) {
-			gameScreen[*x] = ' ';
-			if (bulletPos.size() == 1) {
-				bulletPos.clear();
-				break;
-			}
-			bulletPos.erase(x);
-			x = bulletPos.begin();
-		}
-		else
-		{
-			gameScreen[*x] = ' ';
-			*x -= width;
-			gameScreen[*x] = 0x25CF;
-		}
-	}
-
-
-}
- 
 // Returns  whether the ship has been moved or not
 // also  moves  the ship  from old position to new position if possible
 // used in moveSpaceShip
@@ -296,7 +320,15 @@ void moveSpaceShip(int& currentPositionOfShip) {
 }
 
 
-// collision
+// COLLISIONS 
+
+//ship  front view   used in ship rock collision 
+static vector<int> shipFrontView;
+void initShipFrontView() {
+	vector<int> temp{ 0,3,-4,7,1 - width,2 - width,-1 + width,-2 + width,-3 + width,4 + width,5 + width,6 + width };
+	shipFrontView = vector(temp.begin(), temp.end());
+}
+
 void bulletRockCollision() {
 
 	for (int i = 0; i < bulletPos.size(); i++) {
@@ -306,7 +338,7 @@ void bulletRockCollision() {
 				gameScreen[bulletPos[i]] = ' ';
 				bulletPos.erase(bulletPos.begin() + i);
 				rockPos.erase(rockPos.begin() + j);
-				currentScore += 5;
+				currentScore += 5 * endless.getScoreMultiplier();
 				return;
 			}
 		}
@@ -426,7 +458,6 @@ void userInput(int& index) {
 
 
 // mention scoring in the bottom right corner of the game screen
-
 void printScore() {
 	char score[] = "SCORE : ";
 	int i = 0;
@@ -443,18 +474,20 @@ void printScore() {
 	printInteger(width * height - 20 + j, gameScreen, currentScore);
 	
 }
+
+
 bool runGameScreen(HANDLE& hGameScreen,
 	DWORD& dwBytesWrittenGame,
 	int& slowBullets,
 	int& slowRocks,
 	int& currentPositionOfShip
 ) {
-	if (slowBullets == 12) {
+	if (slowBullets >= endless.getbulletSpeed()) {
 		shootBullets(currentPositionOfShip);
 		slowBullets = 0;
 	}slowBullets++;
-	if (slowRocks == 30) {
-		rockDrops(12);
+	if (slowRocks >= endless.getRockSpeed()) {
+		rockDrops(endless.getObjCount());
 		slowRocks = 0;
 	}slowRocks++;
 	moveSpaceShip(currentPositionOfShip);
@@ -497,9 +530,6 @@ void getExcess() {
 		while (GetAsyncKeyState((unsigned int)'D')); return;
 	}
 }
-
-
-static bool escPressed = false;
 
 //this  function runs parallely   used for  finishing  game loop
 void checkEsc() {
@@ -565,11 +595,20 @@ int main() {
 		case 3:
 			currentScore = 0;
 			// score will be mentioned  in the bottom right corner
+			currentGame = true;
+			// this thread  run along side of game screen keep updating endless values every interval 
+			// upto a threashold
+			std::thread updateEndlessThread(updateEndlessValues);
 
 			while (!escPressed and runGameScreen(hGameScreen, dwBytesWrittenGame, slowBullets, slowrocks, currentPostionOfShip));
+			currentGame = false;
+			updateEndlessThread.join();
+			// reset the values of endless  for the next round  if played
+			endless.reset(); 
+			 
 			screenNumber = 0;
+			// Score Calculation part after current game ends
 			maximumScore = (maximumScore > currentScore) ? maximumScore : currentScore;
-			
 			if (playerScores.find("maximumScore") != playerScores.end()) {
 				maximumScore = (maximumScore > playerScores["maximumScore"]) ? maximumScore : playerScores["maximumScore"];
 				playerScores["maximumScore"] = maximumScore;
